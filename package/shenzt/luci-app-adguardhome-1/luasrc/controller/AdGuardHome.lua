@@ -13,7 +13,35 @@ entry({"admin", "services", "AdGuardHome", "doupdate"}, call("do_update"))
 entry({"admin", "services", "AdGuardHome", "getlog"}, call("get_log"))
 entry({"admin", "services", "AdGuardHome", "dodellog"}, call("do_dellog"))
 entry({"admin", "services", "AdGuardHome", "reloadconfig"}, call("reload_config"))
+entry({"admin", "services", "AdGuardHome", "gettemplateconfig"}, call("get_template_config"))
 end 
+function get_template_config()
+	local b
+	local d=""
+	for cnt in io.lines("/tmp/resolv.conf.auto") do
+		b=string.match (cnt,"^[^#]*nameserver%s+([^%s]+)$")
+		if (b~=nil) then
+			d=d.."  - "..b.."\n"
+		end
+	end
+	local f=io.open("/usr/share/AdGuardHome/AdGuardHome_template.yaml", "r+")
+	local tbl = {}
+	local a=""
+	while (1) do
+    	a=f:read("*l")
+		if (a=="#bootstrap_dns") then
+			a=d
+		elseif (a=="#upstream_dns") then
+			a=d
+		elseif (a==nil) then
+			break
+		end
+		table.insert(tbl, a)
+	end
+	f:close()
+	http.prepare_content("text/plain; charset=utf-8")
+	http.write(table.concat(tbl, "\n"))
+end
 function reload_config()
 	fs.remove("/tmp/AdGuardHometmpconfig.yaml")
 	http.prepare_content("application/json")
@@ -23,26 +51,27 @@ function act_status()
 	local e={}
 	local binpath=uci:get("AdGuardHome","AdGuardHome","binpath")
 	e.running=luci.sys.call("pgrep "..binpath.." >/dev/null")==0
-	local st=fs.readfile("/var/run/AdGredir")
-	if (st=="0") then
-		e.redirect=false
-	else
-		e.redirect=true
-	end
+	e.redirect=(fs.readfile("/var/run/AdGredir")=="1")
 	http.prepare_content("application/json")
 	http.write_json(e)
 end
 function do_update()
 	fs.writefile("/var/run/lucilogpos","0")
-	luci.sys.exec("(rm /var/run/update_core_error ; touch /var/run/update_core ; sh /usr/share/AdGuardHome/update_core.sh >/tmp/AdGuardHome_update.log 2>&1 || touch /var/run/update_core_error ;rm /var/run/update_core) &")
+	local arg
+	if luci.http.formvalue("force") == "1" then
+		arg="force"
+	else
+		arg=""
+	end
+	luci.sys.exec("(rm /var/run/update_core_error ; touch /var/run/update_core ; sh /usr/share/AdGuardHome/update_core.sh "..arg.." >/tmp/AdGuardHome_update.log 2>&1 || touch /var/run/update_core_error ;rm /var/run/update_core) &")
 	http.prepare_content("application/json")
 	http.write('')
 end
 function get_log()
 	local logfile=uci:get("AdGuardHome","AdGuardHome","logfile")
 	if (logfile==nil) then
-	http.write("no log available\n")
-	return
+		http.write("no log available\n")
+		return
 	elseif (logfile=="syslog") then
 		if not fs.access("/var/run/AdGuardHomesyslog") then
 			luci.sys.exec("(/usr/share/AdGuardHome/getsyslog.sh &); sleep 1;")
@@ -50,23 +79,14 @@ function get_log()
 		logfile="/tmp/AdGuardHometmp.log"
 		fs.writefile("/var/run/AdGuardHomesyslog","1")
 	elseif not fs.access(logfile) then
-		http.write("log file not created\n")
+		http.write("")
 		return
 	end
 	http.prepare_content("text/plain; charset=utf-8")
-	local logpos=fs.readfile("/var/run/lucilogpos")
-	local fdp
-	if (logpos ~= nil) then
-		fdp=tonumber(logpos)
-	else
-		fdp=0
-	end
+	local fdp=tonumber(fs.readfile("/var/run/lucilogpos")) or 0
 	local f=io.open(logfile, "r+")
 	f:seek("set",fdp)
-	local a=f:read(2048000)
-	if (a==nil) then
-		a=""
-	end
+	local a=f:read(2048000) or ""
 	fdp=f:seek()
 	fs.writefile("/var/run/lucilogpos",tostring(fdp))
 	f:close()
@@ -80,18 +100,10 @@ function do_dellog()
 end
 function check_update()
 	http.prepare_content("text/plain; charset=utf-8")
-	local logpos=fs.readfile("/var/run/lucilogpos")
-	if (logpos ~= nil) then
-	local fdp=tonumber(logpos)
-	else
-	fdp=0
-	end
+	local fdp=tonumber(fs.readfile("/var/run/lucilogpos")) or 0
 	local f=io.open("/tmp/AdGuardHome_update.log", "r+")
 	f:seek("set",fdp)
-	local a=f:read(2048000)
-	if (a==nil) then
-	a=""
-	end
+	local a=f:read(2048000) or ""
 	fdp=f:seek()
 	fs.writefile("/var/run/lucilogpos",tostring(fdp))
 	f:close()
