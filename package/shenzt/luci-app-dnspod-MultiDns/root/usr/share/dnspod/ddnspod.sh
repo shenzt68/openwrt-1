@@ -267,7 +267,7 @@ arDdnsUpdate() {
     local domainID recordID recordRS recordCD myIP
     # Get domain ID
     domainID=$(arApiPost "Domain.Info" "domain=${1}")
-    domainID=$(echo $domainID | sed 's/.*{"id":"\([0-9]*\)".*/\1/')
+    domainID=$(echo $domainID | sed 's/.*"id":"\([0-9]*\)".*/\1/')
 
     # Update IP
 	arIpAddress
