@@ -29,6 +29,13 @@ o = s:option(Value,"time",translate("Inspection Time"),translate("域名检查�
 o.default = 600
 o.rmempty=false
 
+o = s:option(Button,"delete",translate("删除全部域名记录"))
+o.inputstyle = "reset"
+o.write = function()
+  luci.sys.call("cat /dev/null > /usr/share/dnspod/last.ip") 
+  luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnspod"))
+end
+
 ------------------------------------------------------------
 s = m:section(TypedSection, "ip_last", translate("ip获取设置"))
 s.addremove = false
